@@ -15,7 +15,7 @@ import sys
 import os
 
 # --- Configuración Principal ---
-SERVO_PIN = 4 # Pin BCM para el servo
+SERVO_PIN = 18 # Pin BCM para el servo
 
 # Lógica del Ultrasónico
 # Distancia (en cm) para el bloqueo de seguridad.
@@ -116,7 +116,7 @@ def main(api_host):
             # 4. LÓGICA DE DECISIÓN (Ultrasónico)
             
             if distance < SAFETY_DISTANCE_CM:
-                # bjeto demasiado cerca.
+                # Objeto demasiado cerca.
                 if not safety_lock:
                     # Solo imprimir el mensaje la primera vez que se activa
                     logging.warning(f"¡OBJETO DETECTADO a {distance:.1f}cm! Servo detenido.")
