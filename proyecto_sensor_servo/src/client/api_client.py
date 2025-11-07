@@ -1,7 +1,3 @@
-"""
-Módulo para la clase SensorAPIClient.
-Implementa un cliente para consumir la API de sensores.
-"""
 import requests
 import time
 import logging
@@ -19,16 +15,13 @@ class APIClientError(Exception):
 class SensorAPIClient:
     """
     Cliente para consumir la API de sensores de la Raspberry Pi.
+
     """
 
     def __init__(self, base_url="http://127.0.0.1:5000", retries=3, delay=2, timeout=5):
         """
         Inicializa el cliente.
 
-        :param base_url: La URL base del servidor Flask.
-        :param retries: Número de reintentos en caso de fallo de conexión.
-        :param delay: Tiempo (segundos) de espera entre reintentos.
-        :param timeout: Tiempo (segundos) de espera para una respuesta.
         """
         self.base_url = base_url.rstrip('/')
         self.retries = retries
@@ -49,11 +42,7 @@ class SensorAPIClient:
         for attempt in range(self.retries):
             try:
                 response = requests.get(url, timeout=self.timeout)
-                
-                # Comprobar si la solicitud fue exitosa (200-299)
                 response.raise_for_status() 
-                
-                # Si fue exitosa, devolver el JSON
                 data = response.json()
                 logging.debug(f"Solicitud exitosa a {url}. Datos: {data}")
                 return data
@@ -62,64 +51,37 @@ class SensorAPIClient:
                 logging.warning(f"Error de conexión/timeout en {url} (Intento {attempt + 1}/{self.retries}): {e}")
                 if attempt < self.retries - 1:
                     print(f"Intento {attempt + 1} fallido. Reintentando en {self.delay}s...")
-                    time.sleep(self.delay) # Esperar antes del siguiente intento
+                    time.sleep(self.delay)
                 else:
                     logging.error(f"Fallaron todos los reintentos para {url}")
                     raise APIClientError(f"No se pudo conectar a {url} después de {self.retries} intentos.") from e
 
             except requests.exceptions.HTTPError as e:
-                # Error del servidor (ej. 500, 404)
                 logging.error(f"Error HTTP en {url}: {e.response.status_code} {e.response.text}")
                 raise APIClientError(f"Error del servidor en {url}: {e.response.status_code}") from e
             
             except requests.exceptions.RequestException as e:
-                # Otro error genérico de requests
                 logging.error(f"Error inesperado de 'requests' en {url}: {e}")
                 raise APIClientError(f"Error inesperado en la solicitud: {e}") from e
         
-        # Si el bucle termina sin una excepción o retorno
         raise APIClientError(f"Fallo desconocido al contactar {url}")
 
     def get_potentiometer_value(self):
         """
         Obtiene el valor del potenciómetro desde la API.
-
-        :return: El valor en porcentaje (float) o None si la API devuelve un error.
-        :raises APIClientError: Si la conexión falla.
         """
         try:
             data = self._make_request("/api/potentiometer")
             
-            # Validar la respuesta
             if data.get('status') == 'success' and data.get('sensor') == 'potentiometer':
+                # Devolver el valor de porcentaje
                 return data.get('value_percentage')
             else:
                 message = data.get('message', 'Respuesta inválida desde la API')
                 logging.error(f"API devolvió un error (potenciómetro): {message}")
-                return None # El servidor devolvió un error, pero la conexión fue exitosa.
+                return None
 
         except APIClientError as e:
             logging.error(f"No se pudo obtener el valor del potenciómetro: {e}")
-            raise # Relanzar la excepción para que main.py la maneje
+            raise 
 
-    def get_ultrasonic_distance(self):
-        """
-        Obtiene la distancia del sensor ultrasónico desde la API.
-
-        :return: El valor de distancia (float) o None si la API devuelve un error.
-        :raises APIClientError: Si la conexión falla.
-        """
-        try:
-            data = self._make_request("/api/ultrasonic")
-            
-            # Validar la respuesta
-            if data.get('status') == 'success' and data.get('sensor') == 'ultrasonic':
-                return data.get('value')
-            else:
-                message = data.get('message', 'Respuesta inválida desde la API')
-                logging.error(f"API devolvió un error (ultrasónico): {message}")
-                return None 
-
-        except APIClientError as e:
-            logging.error(f"No se pudo obtener la distancia ultrasónica: {e}")
-            raise # Relanzar la excepción
