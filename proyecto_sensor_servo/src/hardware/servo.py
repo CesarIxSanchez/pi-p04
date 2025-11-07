@@ -1,6 +1,6 @@
 """
 Módulo para la clase Servo.
-Encapsula la lógica para controlar un servomotor (ej. SG90) usando PWM.
+Encapsula la lógica para controlar un servomotor usando PWM.
 """
 import RPi.GPIO as GPIO
 import time
@@ -14,13 +14,12 @@ logging.basicConfig(
 
 class Servo:
     """
-    Clase para controlar un servomotor usando PWM en la Raspberry Pi.
+    Clase para controlar un servomotor (ej. SG90) usando PWM en la Raspberry Pi.
     """
 
     def __init__(self, pin, min_angle=0, max_angle=180, min_duty=2, max_duty=12):
         """
         Inicializa el servomotor.
-
         :param pin: El pin GPIO (BCM) al que está conectado el servo.
         :param min_angle: El ángulo mínimo (límite de seguridad).
         :param max_angle: El ángulo máximo (límite de seguridad).
@@ -29,7 +28,7 @@ class Servo:
         """
         self.pin = pin
         
-        # Límites de seguridad
+        # --- Mecanismo de seguridad para límites de movimiento ---
         self.min_angle = min_angle
         self.max_angle = max_angle
         
@@ -37,6 +36,10 @@ class Servo:
         self.min_duty = min_duty
         self.max_duty = max_duty
         
+        # Guardar el último ángulo conocido para el bloqueo de seguridad
+        self.last_angle = 90 
+        
+        # Configurar el pin (el modo BCM se establece en el script principal)
         GPIO.setup(self.pin, GPIO.OUT)
         
         # Inicializar PWM a 50Hz (estándar para servos)
@@ -46,8 +49,7 @@ class Servo:
 
     def _angle_to_duty_cycle(self, angle):
         """
-        Convierte un ángulo (0-180) a un ciclo de trabajo PWM.
-        
+        Método privado para convertir un ángulo (0-180) a un ciclo de trabajo PWM.
         :param angle: El ángulo deseado.
         :return: El ciclo de trabajo (duty cycle) correspondiente.
         :rtype: float
@@ -65,35 +67,51 @@ class Servo:
     def set_angle(self, angle):
         """
         Mueve el servo a un ángulo específico, respetando los límites.
-        
         :param angle: El ángulo al que se debe mover el servo.
         :type angle: float
         """
-        # --- Mecanismo de seguridad ---
-        clamped_angle = max(self.min_angle, min(self.max_angle, angle))
         
-        if clamped_angle != angle:
-            logging.warning(f"Ángulo solicitado ({angle}°) fuera de límites. Ajustando a {clamped_angle}°")
+        # --- Mecanismo de seguridad (Límites) ---
+        if angle < self.min_angle:
+            angle = self.min_angle
+            logging.warning(f"Ángulo solicitado ({angle}°) < límite. Ajustando a {self.min_angle}°")
+        elif angle > self.max_angle:
+            angle = self.max_angle
+            logging.warning(f"Ángulo solicitado ({angle}°) > límite. Ajustando a {self.max_angle}°")
         
-        angle_to_set = clamped_angle
-        duty_cycle = self._angle_to_duty_cycle(angle_to_set)
+        # Calcular el ciclo de trabajo necesario
+        duty_cycle = self._angle_to_duty_cycle(angle)
         
         # Enviar el pulso
         self.pwm.ChangeDutyCycle(duty_cycle)
         
         # --- Logging del movimiento ---
-        logging.info(f"Moviendo a {angle_to_set:.1f}° (Duty Cycle: {duty_cycle:.2f})")
+        logging.info(f"Moviendo a {angle:.1f}° (Duty Cycle: {duty_cycle:.2f})")
         
-        # Pausa para que el servo llegue a la posición
-        time.sleep(0.5) 
+        time.sleep(0.01) 
         
         # Apagar el pulso para evitar "jitter" (temblor)
+        self.pwm.ChangeDutyCycle(0)
+        
+        # Guardar este como el último ángulo válido
+        self.last_angle = angle
+
+    def hold_position(self):
+        """
+        Función de seguridad (usada por main.py).
+        Re-envía el pulso para el último ángulo conocido, para mantener
+        el servo bloqueado en su última posición segura.
+        """
+        logging.debug(f"Manteniendo posición de seguridad en {self.last_angle:.1f}°")
+        # Re-enviar el último pulso conocido
+        duty_cycle = self._angle_to_duty_cycle(self.last_angle)
+        self.pwm.ChangeDutyCycle(duty_cycle)
+        time.sleep(0.01)
         self.pwm.ChangeDutyCycle(0)
 
     def cleanup(self):
         """
         Detiene el PWM y libera el pin del servo.
-        No llama a GPIO.cleanup() general, para no afectar a otros módulos.
         """
         self.pwm.stop()
         logging.info(f"Señal PWM detenida para el servo en pin {self.pin}.")
