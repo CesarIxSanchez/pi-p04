@@ -1,13 +1,4 @@
-"""
-Punto de entrada principal (Cliente)
-Este script consume la API (que se ejecuta en otro proceso)
-y utiliza los datos del potenciómetro para controlar un servomotor.
-
-Debe ejecutarse en la Raspberry Pi, en una terminal SEPARADA
-después de haber iniciado 'src/api/sensor_api.py'.
-
-Ejecución: python main.py
-"""
+# (Punto de entrada principal del proyecto - Cliente)
 import time
 import RPi.GPIO as GPIO
 import logging
@@ -17,25 +8,17 @@ import os
 # --- Configuración Principal ---
 SERVO_PIN = 18 # Pin BCM para el servo
 
-# Lógica del Ultrasónico
-# Distancia (en cm) para el bloqueo de seguridad.
-SAFETY_DISTANCE_CM = 15.0 
-
 # --- Importaciones del Proyecto ---
-
-# Añadir la carpeta 'src' al path de Python para encontrar los módulos
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
 try:
-    # Cliente de API
     from client.api_client import SensorAPIClient, APIClientError
-    # Control de Servo
     from hardware.servo import Servo
 except ImportError as e:
     print("Error: No se pudieron importar los módulos.")
-    print("Asegúrate de estar en el entorno virtual ('venv')")
     print(f"Detalle: {e}")
     sys.exit(1)
+
 
 def map_value(value, in_min, in_max, out_min, out_max):
     """
@@ -56,19 +39,16 @@ def main(api_host):
     """
     Función principal del programa actuador (Cliente).
 
-    :param api_host: La dirección IP del servidor API (ej. '127.0.0.1' o '192.168.1.100').
+    :param api_host: La dirección IP del servidor API.
     """
-    # Configurar el logging
     logging.basicConfig(level=logging.INFO, 
                         format='%(asctime)s - [MainLogic] - %(levelname)s - %(message)s')
     
-    # Construir la URL base de la API
     api_base_url = f"http://{api_host}:5000"
     
     logging.info(f"Iniciando programa de control del servo...")
     logging.info(f"Intentando conectar a la API en: {api_base_url}")
     
-    # Configurar el modo GPIO una sola vez
     try:
         GPIO.setmode(GPIO.BCM)
     except Exception as e:
@@ -83,61 +63,37 @@ def main(api_host):
     logging.info(f"Servo inicializado en pin {SERVO_PIN}.")
     logging.info(f"Cliente API configurado para {api_base_url}.")
     
-    # Centrar el servo al inicio
     logging.info("Centrando servo a 90 grados...")
     servo.set_angle(90)
     time.sleep(1)
 
     logging.info("Iniciando bucle de control. Presiona CTRL+C para salir.")
     
-    # Bandera para el bloqueo de seguridad del ultrasónico
-    safety_lock = False 
 
     try:
-        # Bucle principal
         while True:
             try:
-                # 3. Leer AMBOS sensores desde la API
+                # 3. Leer SOLAMENTE el potenciómetro
                 pot_value = client.get_potentiometer_value()
-                distance = client.get_ultrasonic_distance()
                 
-                # Manejar si la API devuelve un error (ej. sensor desconectado)
-                if pot_value is None or distance is None:
-                    logging.warning("La API devolvió 'None'. Revisar los sensores en la Pi Servidor.")
+                if pot_value is None:
+                    logging.warning("La API devolvió 'None'. Revisar el sensor en la Pi Servidor.")
                     time.sleep(1)
-                    continue # Saltar esta iteración
+                    continue 
 
             except APIClientError as e:
                 logging.error(f"Error de conexión con la API: {e}")
                 logging.error(f"¿Está la Pi Servidor en {api_base_url} ejecutándose?")
-                time.sleep(3) # Esperar antes de reintentar
-                continue # Saltar esta iteración
+                time.sleep(3) 
+                continue 
             
-            # 4. LÓGICA DE DECISIÓN (Ultrasónico)
-            
-            if distance < SAFETY_DISTANCE_CM:
-                # Objeto demasiado cerca.
-                if not safety_lock:
-                    # Solo imprimir el mensaje la primera vez que se activa
-                    logging.warning(f"¡OBJETO DETECTADO a {distance:.1f}cm! Servo detenido.")
-                    safety_lock = True
-                
-                # Mantener el servo en su última posición segura
-                servo.hold_position() 
-                
-            else:
-                # Es seguro moverse
-                if safety_lock:
-                    # Solo imprimir el mensaje la primera vez que se desactiva
-                    logging.info("Zona despejada. Reactivando control del potenciómetro.")
-                    safety_lock = False
 
-                # 5. Mapear y controlar el actuador
-                # Mapear el porcentaje (0-100) al ángulo del servo (0-180)
-                target_angle = map_value(pot_value, 0.0, 100.0, 0, 180)
-                servo.set_angle(target_angle)
             
-            # Sleep muy pequeño para no saturar la CPU al 100%.
+            # 5. Mapear y controlar el actuador
+            target_angle = map_value(pot_value, 0.0, 100.0, 0, 180)
+            servo.set_angle(target_angle)
+            
+            # Sleep muy pequeño para respuesta rápida
             time.sleep(0.01)
 
     except KeyboardInterrupt:
@@ -147,24 +103,20 @@ def main(api_host):
         # 6. Limpieza
         logging.info("Limpiando recursos...")
         servo.cleanup()
-        GPIO.cleanup() # Limpieza general de todos los pines
+        GPIO.cleanup()
         logging.info("¡Hasta luego!")
 
 
 # --- Punto de Entrada Principal ---
 if __name__ == "__main__":
     
-    # LÓGICA DE DUAL
+    # Lógica de Modo Dual (Pi-Cliente y Pi-Servidor)
     
     if len(sys.argv) > 1:
-        # MODO 2: REMOTO
-        # El usuario proveyó una IP (ej. python main.py 192.168.1.100)
+
         host_ip = sys.argv[1]
     else:
-        # MODO 1: LOCAL
-        # El usuario no proveyó IP (ej. python main.py)
-        # Se asume que el servidor corre en la misma máquina.
+
         host_ip = "127.0.0.1"
         
-    # Llamar a la función principal con la IP correcta
     main(host_ip)

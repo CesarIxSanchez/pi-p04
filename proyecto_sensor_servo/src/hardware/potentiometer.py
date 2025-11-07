@@ -1,8 +1,3 @@
-"""
-Módulo para la clase Potentiometer.
-Encapsula la lógica para leer un potenciómetro usando un circuito RC
-en una Raspberry Pi.
-"""
 import RPi.GPIO as GPIO
 import time
 import logging
@@ -13,14 +8,12 @@ logging.basicConfig(level=logging.INFO)
 class Potentiometer:
     """
     Clase para gestionar la lectura de un potenciómetro en una Raspberry Pi
-    mediante un método de carga/descarga de condensador (circuito RC).
     """
 
     def __init__(self, pin):
         """
         Inicializa el potenciómetro.
 
-        :param pin: El número de pin GPIO (en modo BCM) al que está conectado.
         """
         self.pin = pin
         self.min_value = 0   # Valor crudo mínimo después de la calibración
@@ -30,16 +23,13 @@ class Potentiometer:
     def _read_raw_value(self):
         """
         Realiza la lectura del circuito RC y devuelve el conteo crudo.
-
-        :return: Un entero (conteo) que es proporcional a la resistencia.
-        :rtype: int
         """
         count = 0
         
         # Descargar el condensador
         GPIO.setup(self.pin, GPIO.OUT)
         GPIO.output(self.pin, False)
-        time.sleep(0.1)  # Pausa para asegurar la descarga
+        time.sleep(0.1)  
         
         # Poner el pin en modo entrada para leer la carga
         GPIO.setup(self.pin, GPIO.IN)
@@ -81,9 +71,7 @@ class Potentiometer:
         """
         Calcula el porcentaje (0.0-100.0) basado en un valor crudo ya leído.
         
-        :param raw_value: El valor crudo a normalizar.
-        :return: El valor normalizado en porcentaje.
-        :rtype: float
+
         """
         # Evitar división por cero si la calibración fue mala
         range_span = self.max_value - self.min_value
@@ -103,8 +91,6 @@ class Potentiometer:
         Obtiene el valor actual del potenciómetro como un porcentaje (0.0 a 100.0).
         Realiza una nueva lectura de sensor.
 
-        :return: El valor normalizado en porcentaje.
-        :rtype: float
         """
         value = self._read_raw_value()
         return self.get_percentage_from_raw(value)
@@ -113,8 +99,6 @@ class Potentiometer:
         """
         Obtiene el valor crudo actual del sensor.
         Realiza una nueva lectura de sensor.
-        
-        :return: El conteo crudo.
-        :rtype: int
+
         """
         return self._read_raw_value()
