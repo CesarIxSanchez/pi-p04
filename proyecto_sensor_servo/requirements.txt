@@ -1,0 +1,5 @@
+# Dependencias del proyecto
+
+flask
+requests
+RPi.GPIO
