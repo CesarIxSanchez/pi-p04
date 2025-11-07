@@ -1,9 +1,12 @@
+"""
+Módulo para la clase Servo.
+Encapsula la lógica para controlar un servomotor (ej. SG90) usando PWM.
+"""
 import RPi.GPIO as GPIO
 import time
 import logging
 
 # Configurar el logging básico para este módulo
-# Esto cumple con el requisito de la Tarea 4 [cite: 62]
 logging.basicConfig(
     level=logging.INFO, 
     format='%(asctime)s - [Servo] - %(levelname)s - %(message)s'
@@ -11,7 +14,7 @@ logging.basicConfig(
 
 class Servo:
     """
-    Clase para controlar un servomotor (ej. SG90) usando PWM en la Raspberry Pi.
+    Clase para controlar un servomotor usando PWM en la Raspberry Pi.
     """
 
     def __init__(self, pin, min_angle=0, max_angle=180, min_duty=2, max_duty=12):
@@ -19,14 +22,14 @@ class Servo:
         Inicializa el servomotor.
 
         :param pin: El pin GPIO (BCM) al que está conectado el servo.
-        :param min_angle: El ángulo mínimo (límite de seguridad). [cite: 61]
-        :param max_angle: El ángulo máximo (límite de seguridad). [cite: 61]
+        :param min_angle: El ángulo mínimo (límite de seguridad).
+        :param max_angle: El ángulo máximo (límite de seguridad).
         :param min_duty: El ciclo de trabajo PWM para el ángulo mínimo (default: 2).
         :param max_duty: El ciclo de trabajo PWM para el ángulo máximo (default: 12).
         """
         self.pin = pin
         
-        # Límites de seguridad (Tarea 4) [cite: 61]
+        # Límites de seguridad
         self.min_angle = min_angle
         self.max_angle = max_angle
         
@@ -34,11 +37,6 @@ class Servo:
         self.min_duty = min_duty
         self.max_duty = max_duty
         
-        try:
-            GPIO.setmode(GPIO.BCM)
-        except Exception as e:
-            print(f"Advertencia: Modo GPIO ya configurado o error: {e}")
-            
         GPIO.setup(self.pin, GPIO.OUT)
         
         # Inicializar PWM a 50Hz (estándar para servos)
@@ -48,7 +46,7 @@ class Servo:
 
     def _angle_to_duty_cycle(self, angle):
         """
-        Convierte un ángulo (0-180) a un ciclo de trabajo PWM (ej. 2-12).
+        Convierte un ángulo (0-180) a un ciclo de trabajo PWM.
         
         :param angle: El ángulo deseado.
         :return: El ciclo de trabajo (duty cycle) correspondiente.
@@ -71,21 +69,20 @@ class Servo:
         :param angle: El ángulo al que se debe mover el servo.
         :type angle: float
         """
-        # --- Tarea 4: Mecanismo de seguridad [cite: 61] ---
-        if angle < self.min_angle:
-            angle = self.min_angle
-            logging.warning(f"Ángulo solicitado ({angle}°) < límite. Ajustando a {self.min_angle}°")
-        elif angle > self.max_angle:
-            angle = self.max_angle
-            logging.warning(f"Ángulo solicitado ({angle}°) > límite. Ajustando a {self.max_angle}°")
+        # --- Mecanismo de seguridad ---
+        clamped_angle = max(self.min_angle, min(self.max_angle, angle))
         
-        duty_cycle = self._angle_to_duty_cycle(angle)
+        if clamped_angle != angle:
+            logging.warning(f"Ángulo solicitado ({angle}°) fuera de límites. Ajustando a {clamped_angle}°")
+        
+        angle_to_set = clamped_angle
+        duty_cycle = self._angle_to_duty_cycle(angle_to_set)
         
         # Enviar el pulso
         self.pwm.ChangeDutyCycle(duty_cycle)
         
-        # --- Tarea 4: Logging del movimiento [cite: 62] ---
-        logging.info(f"Moviendo a {angle:.1f}° (Duty Cycle: {duty_cycle:.2f})")
+        # --- Logging del movimiento ---
+        logging.info(f"Moviendo a {angle_to_set:.1f}° (Duty Cycle: {duty_cycle:.2f})")
         
         # Pausa para que el servo llegue a la posición
         time.sleep(0.5) 

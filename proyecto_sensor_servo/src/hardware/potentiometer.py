@@ -1,3 +1,8 @@
+"""
+Módulo para la clase Potentiometer.
+Encapsula la lógica para leer un potenciómetro usando un circuito RC
+en una Raspberry Pi.
+"""
 import RPi.GPIO as GPIO
 import time
 
@@ -15,18 +20,13 @@ class Potentiometer:
         """
         self.pin = pin
         self.min_value = 0  # Valor crudo mínimo después de la calibración
-        self.max_value = 100 # Valor crudo máximo después de la calibración
-        
-        # Configurar el modo GPIO
-        # Se puede llamar varias veces, pero idealmente se hace una vez en main.py
-        try:
-            GPIO.setmode(GPIO.BCM)
-        except Exception as e:
-            print(f"Advertencia: Modo GPIO ya configurado o error: {e}")
+        self.max_value = 100 # Valor crudo máximo (default hasta calibrar)
+        self._last_raw_value = 0 # Almacena la última lectura cruda
 
     def _read_raw_value(self):
         """
         Realiza la lectura del circuito RC y devuelve el conteo crudo.
+        Actualiza el valor interno _last_raw_value.
 
         :return: Un entero (conteo) que es proporcional a la resistencia.
         :rtype: int
@@ -36,7 +36,7 @@ class Potentiometer:
         # Descargar el condensador
         GPIO.setup(self.pin, GPIO.OUT)
         GPIO.output(self.pin, False)
-        time.sleep(0.1)  # Pausa para asegurar la descarga
+        time.sleep(0.01) # Reducido para lecturas más rápidas
         
         # Poner el pin en modo entrada para leer la carga
         GPIO.setup(self.pin, GPIO.IN)
@@ -44,9 +44,13 @@ class Potentiometer:
         # Contar el tiempo que tarda en cargarse (pasar a HIGH)
         while GPIO.input(self.pin) == GPIO.LOW:
             count += 1
-            if count > 100000: # Timeout de seguridad
+            if count > 100000: # Timeout de seguridad (para 10k pot)
                 print("Advertencia: Timeout en la lectura del potenciómetro.")
+                # Si hay timeout, usar el valor de timeout,
+                # probablemente es el máximo.
                 break
+        
+        self._last_raw_value = count
         return count
 
     def calibrate(self):
@@ -68,16 +72,15 @@ class Potentiometer:
         # Comprobación de seguridad para evitar división por cero
         if self.max_value <= self.min_value:
             print("¡Error de calibración! El valor máximo no es mayor que el mínimo.")
-            print("Usando valores por defecto (0-100). Reintenta la calibración.")
+            print("Usando valores por defecto. Reintenta la calibración.")
             self.min_value = 0
-            self.max_value = 100
+            self.max_value = self.min_value + 100 # Un rango pequeño por defecto
         
         print(f"\nCalibración completada: Rango [{self.min_value}, {self.max_value}]")
 
     def get_percentage(self):
         """
         Obtiene el valor actual del potenciómetro como un porcentaje (0.0 a 100.0).
-
         Utiliza los valores de calibración para normalizar el dato crudo.
 
         :return: El valor normalizado en porcentaje.
@@ -96,13 +99,15 @@ class Potentiometer:
         # Asegurar que el valor esté siempre entre 0 y 100
         normalized = max(0.0, min(100.0, normalized))
         
-        return normalized
+        return round(normalized, 2) # Redondear a 2 decimales
 
     def get_raw_value(self):
         """
-        Obtiene el valor crudo actual del sensor.
+        Obtiene el valor crudo de la última lectura del sensor.
+        No ejecuta una nueva lectura, usa el valor almacenado por
+        get_percentage() o _read_raw_value().
         
-        :return: El conteo crudo.
+        :return: El último conteo crudo.
         :rtype: int
         """
-        return self._read_raw_value()
+        return self._last_raw_value

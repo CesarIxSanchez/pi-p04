@@ -1,19 +1,31 @@
-# main.py
-# (Este archivo va en la raíz de tu proyecto)
+"""
+Punto de entrada principal (Cliente)
+Este script consume la API (que se ejecuta en otro proceso)
+y utiliza los datos del potenciómetro para controlar un servomotor.
 
+Debe ejecutarse en la Raspberry Pi, en una terminal SEPARADA
+después de haber iniciado 'src/api/sensor_api.py'.
+
+Ejecución: python main.py
+"""
 import time
 import RPi.GPIO as GPIO
 import logging
+import sys
+import os
 
-# Importaciones correctas según tu estructura de archivos
+# --- Importación ---
+# Añade el directorio raíz del proyecto (proyecto_sensor_servo) al path de Python
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(SCRIPT_DIR) # main.py está en la raíz
+sys.path.append(PROJECT_ROOT)
+
 from src.client.api_client import SensorAPIClient, APIClientError
 from src.hardware.servo import Servo
 
 # --- Configuración Principal ---
-SERVO_PIN = 18 # !! IMPORTANTE: Cambia este pin al pin BCM de tu servo
-API_BASE_URL = "http://127.0.0.1:5000" # URL de tu API
-# --- Fin de la Configuración ---
-
+SERVO_PIN = 18 # Pin BCM del servo
+API_BASE_URL = "http://127.0.0.1:5000" # URL del API 
 
 def map_value(value, in_min, in_max, out_min, out_max):
     """ Mapea un valor de un rango a otro. """
@@ -30,12 +42,13 @@ def main():
     
     logging.info("Iniciando programa de control del servo...")
     
-    # 1. Inicializar el hardware (Actuador)
-    # [cite: servo.py]
+    # 1. Configurar modo GPIO
+    GPIO.setmode(GPIO.BCM)
+    
+    # 2. Inicializar el hardware (Actuador)
     servo = Servo(pin=SERVO_PIN, min_angle=0, max_angle=180)
     
-    # 2. Inicializar el cliente (Sensores)
-    # [cite: api_client.py]
+    # 3. Inicializar el cliente (Sensores)
     client = SensorAPIClient(base_url=API_BASE_URL)
 
     logging.info(f"Servo inicializado en pin {SERVO_PIN}.")
@@ -49,12 +62,12 @@ def main():
 
     try:
         while True:
-            # 3. Leer datos del sensor (vía API)
+            # 4. Leer datos del sensor (vía API)
             try:
-                # Ahora pedimos el 'value_percentage' que definimos en la API
-                pot_value = client.get_potentiometer_value()
+                # Pedimos el valor porcentual
+                pot_percentage = client.get_potentiometer_percentage()
                 
-                if pot_value is None:
+                if pot_percentage is None:
                     logging.warning("La API devolvió 'None'. Revisar el sensor en la Pi.")
                     time.sleep(2)
                     continue
@@ -65,23 +78,26 @@ def main():
                 time.sleep(5)
                 continue
             
-            # 4. Tomar decisión y actuar (Lógica)
+            # 5. Tomar decisión y actuar
             
             # Mapeamos el porcentaje (0-100) al ángulo del servo (0-180)
-            target_angle = map_value(pot_value, 0.0, 100.0, 0, 180)
+            target_angle = map_value(pot_percentage, 0.0, 100.0, 0, 180)
             
-            # 5. Controlar el actuador (Servo)
+            # 6. Controlar el actuador (Servo)
+            print(f"Potenciómetro: {pot_percentage:.1f}% -> Ángulo Servo: {target_angle:.1f}°")
             servo.set_angle(target_angle)
             
-            time.sleep(0.05) 
+            # El sleep(0.5) ya está dentro de servo.set_angle()
+            # por lo que el bucle se actualiza aprox. cada 0.5s
 
     except KeyboardInterrupt:
         logging.info("\nPrograma detenido por el usuario (CTRL+C).")
     
     finally:
-        # 6. Limpieza
+        # 7. Limpieza
         logging.info("Limpiando recursos...")
         servo.cleanup()
+        # Limpieza general de GPIO
         GPIO.cleanup()
         logging.info("¡Hasta luego!")
 

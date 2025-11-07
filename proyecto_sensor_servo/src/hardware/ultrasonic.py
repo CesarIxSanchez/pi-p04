@@ -1,71 +1,68 @@
-# src/hardware/ultrasonic.py
-
+"""
+Módulo para la clase UltrasonicSensor (HC-SR04).
+Encapsula la lógica para medir distancias.
+"""
 import RPi.GPIO as GPIO
 import time
 
 class UltrasonicSensor:
     """
-    Clase para gestionar un sensor ultrasónico HC-SR04 en una Raspberry Pi.
+    Clase para gestionar la lectura de un sensor de distancia
+    ultrasónico HC-SR04.
     """
 
     def __init__(self, trig_pin, echo_pin):
         """
         Inicializa el sensor.
 
-        :param trig_pin: El pin GPIO (BCM) para el Trigger (salida).
-        :param echo_pin: El pin GPIO (BCM) para el Echo (entrada).
+        :param trig_pin: El pin GPIO (BCM) de Trigger.
+        :param echo_pin: El pin GPIO (BCM) de Echo.
         """
         self.trig_pin = trig_pin
         self.echo_pin = echo_pin
-
-        # Configurar pines
-        # (Asumimos que GPIO.setmode(GPIO.BCM) se llamó en otro lugar,
-        # como en el __init__ del Potenciometro o en el main de la API)
-        try:
-            GPIO.setup(self.trig_pin, GPIO.OUT)
-            GPIO.setup(self.echo_pin, GPIO.IN)
-        except Exception as e:
-            print(f"Advertencia: Problema al configurar pines de ultrasonido: {e}")
-            print("Asegúrate de que GPIO.setmode(GPIO.BCM) se haya llamado.")
-
-        # Asegurar que el trigger esté bajo al inicio
-        GPIO.output(self.trig_pin, False)
-        print("Sensor Ultrasónico: Esperando 1 segundo para estabilizar...")
-        time.sleep(1) # Pequeña pausa para que el sensor se estabilice
+        
+        GPIO.setup(self.trig_pin, GPIO.OUT)
+        GPIO.setup(self.echo_pin, GPIO.IN)
 
     def get_distance(self):
         """
-        Mide la distancia actual en centímetros.
+        Realiza una medición de distancia.
 
-        :return: La distancia medida en cm.
+        :return: La distancia medida en centímetros.
         :rtype: float
         """
-        
-        # 1. Enviar un pulso de 10us al pin Trigger
+        # Asegurar que el Trigger esté bajo
+        GPIO.output(self.trig_pin, False)
+        time.sleep(0.2) # Pausa para estabilizar
+
+        # Enviar un pulso de 10us al Trigger
         GPIO.output(self.trig_pin, True)
-        time.sleep(0.00001) # Pulso de 10 microsegundos
+        time.sleep(0.00001) # 10 microsegundos
         GPIO.output(self.trig_pin, False)
 
-        # 2. Medir el tiempo que el pin Echo está en ALTO (HIGH)
-        
-        # Guardar el tiempo de inicio cuando Echo es BAJO
-        start_time = time.time()
+        pulse_start_time = time.time()
+        pulse_end_time = time.time()
+
+        # Grabar el último tiempo LOW ANTES de que el pulso ECHO comience
         while GPIO.input(self.echo_pin) == 0:
-            start_time = time.time()
-            # (Podríamos añadir un timeout de seguridad aquí)
+            pulse_start_time = time.time()
+            # Romper si el pulso nunca inicia (sensor desconectado)
+            if pulse_start_time - pulse_end_time > 0.1:
+                raise TimeoutError("Timeout esperando inicio de pulso ECHO")
 
-        # Guardar el tiempo final cuando Echo vuelve a ser BAJO
-        stop_time = time.time()
+        # Grabar el tiempo cuando el pulso ECHO termina
         while GPIO.input(self.echo_pin) == 1:
-            stop_time = time.time()
-            # (Podríamos añadir un timeout de seguridad aquí)
+            pulse_end_time = time.time()
+            # Romper si el pulso nunca termina
+            if pulse_end_time - pulse_start_time > 0.1:
+                raise TimeoutError("Timeout esperando fin de pulso ECHO")
 
-        # 3. Calcular la duración del pulso
-        time_elapsed = stop_time - start_time
+        # Calcular la duración del pulso
+        pulse_duration = pulse_end_time - pulse_start_time
         
-        # 4. Calcular la distancia
-        # La velocidad del sonido es ~34300 cm/s
-        # La distancia es (Tiempo * VelocidadSonido) / 2 (porque es ida y vuelta)
-        distance = (time_elapsed * 34300) / 2
-
-        return round(distance, 2) # Devolver con 2 decimales
+        # Calcular distancia:
+        # Distancia = (Tiempo * VelocidadDelSonido) / 2
+        # Velocidad del sonido = 34300 cm/s
+        distance = (pulse_duration * 34300) / 2
+        
+        return round(distance, 2) # Redondear a 2 decimales
